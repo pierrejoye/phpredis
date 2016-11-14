@@ -2669,7 +2669,7 @@ int redis_object_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
 
 /* GEODIST */
 int redis_geodist_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-                      char **cmd, int *cmd_len, short *slot, void **ctx)
+                      char **cmd, size_t *cmd_len, short *slot, void **ctx)
 {
     char *key, *source, *dest, *unit = NULL;
     size_t keylen, sourcelen, destlen, unitlen;
@@ -2763,7 +2763,7 @@ void append_georadius_opts(smart_string *str, int withcoord, int withdist,
 
 /* GEORADIUS */
 int redis_georadius_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-                        char **cmd, int *cmd_len, short *slot, void **ctx)
+                        char **cmd, size_t *cmd_len, short *slot, void **ctx)
 {
     char *key, *unit;
     int withcoord = 0, withdist = 0, withhash = 0;
@@ -2822,7 +2822,7 @@ int redis_georadius_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
 
 /* GEORADIUSBYMEMBER key member radius m|km|ft|mi [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT count] */
 int redis_georadiusbymember_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-                                char **cmd, int *cmd_len, short *slot, void **ctx)
+                                char **cmd, size_t *cmd_len, short *slot, void **ctx)
 {
     char *key, *mem, *unit;
     int keyfree, argc;

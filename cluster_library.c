@@ -587,7 +587,7 @@ unsigned short cluster_hash_key_zval(zval *z_key) {
 /* Fisher-Yates shuffle for integer array */
 static void fyshuffle(int *array, size_t len) {
     int temp;
-    size n = len;
+    size_t n = len;
     size_t r;
 
     /* Randomize */
@@ -2233,7 +2233,7 @@ int mbulk_resp_loop_raw(RedisSock *redis_sock, zval *z_result,
                         long long count, void *ctx TSRMLS_DC)
 {
     char *line;
-    int line_len;
+    size_t line_len;
 
     // Iterate over the number we have
     while(count--) {
@@ -2254,7 +2254,7 @@ int mbulk_resp_loop(RedisSock *redis_sock, zval *z_result,
                     long long count, void *ctx TSRMLS_DC)
 {
     char *line;
-    int line_len;
+    size_t line_len;
 
     /* Iterate over the lines we have to process */
     while(count--) {

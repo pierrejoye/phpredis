@@ -115,7 +115,7 @@ void
 redis_pool_member_auth(redis_pool_member *rpm TSRMLS_DC) {
     RedisSock *redis_sock = rpm->redis_sock;
     char *response, *cmd;
-    int response_len, cmd_len;
+    size_t response_len, cmd_len;
 
     if(!rpm->auth || !rpm->auth_len) { /* no password given. */
             return;
@@ -135,7 +135,7 @@ static void
 redis_pool_member_select(redis_pool_member *rpm TSRMLS_DC) {
     RedisSock *redis_sock = rpm->redis_sock;
     char *response, *cmd;
-    int response_len, cmd_len;
+    size_t response_len, cmd_len;
 
     cmd_len = redis_cmd_format_static(&cmd, "SELECT", "d", rpm->database);
 
@@ -309,7 +309,7 @@ PS_CLOSE_FUNC(redis)
 /* }}} */
 
 static char *
-redis_session_key(redis_pool_member *rpm, const char *key, int key_len, int *session_len) {
+redis_session_key(redis_pool_member *rpm, const char *key, int key_len, size_t *session_len) {
 
     char *session;
     char default_prefix[] = "PHPREDIS_SESSION:";
@@ -335,9 +335,9 @@ redis_session_key(redis_pool_member *rpm, const char *key, int key_len, int *ses
 PS_READ_FUNC(redis)
 {
     char *session, *cmd;
-    int session_len, cmd_len;
+    size_t session_len, cmd_len;
     char *char_val;
-    int int_val = 0;
+    size_t int_val = 0;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val);
@@ -377,7 +377,7 @@ PS_READ_FUNC(redis)
 PS_WRITE_FUNC(redis)
 {
     char *cmd, *response, *session;
-    int cmd_len, response_len, session_len;
+    size_t cmd_len, response_len, session_len;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val TSRMLS_CC);
@@ -419,7 +419,7 @@ PS_WRITE_FUNC(redis)
 PS_DESTROY_FUNC(redis)
 {
     char *cmd, *response, *session;
-    int cmd_len, response_len, session_len;
+    size_t cmd_len, response_len, session_len;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val TSRMLS_CC);

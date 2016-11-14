@@ -244,13 +244,13 @@ size_t redis_fmt_scan_cmd(char **cmd, REDIS_SCAN_TYPE type, char *key, size_t ke
                        zend_long it, char *pat, size_t pat_len, zend_long count);
 
 int redis_geodist_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-    char **cmd, int *cmd_len, short *slot, void **ctx);
+    char **cmd, size_t *cmd_len, short *slot, void **ctx);
 
 int redis_georadius_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-    char **cmd, int *cmd_len, short *slot, void **ctx);
+    char **cmd, size_t *cmd_len, short *slot, void **ctx);
 
 int redis_georadiusbymember_cmd(INTERNAL_FUNCTION_PARAMETERS, RedisSock *redis_sock,
-    char **cmd, int *cmd_len, short *slot, void **ctx);
+    char **cmd, size_t *cmd_len, short *slot, void **ctx);
 
 /* Commands that don't communicate with Redis at all (such as getOption,
  * setOption, _prefix, _serialize, etc).  These can be handled in one place

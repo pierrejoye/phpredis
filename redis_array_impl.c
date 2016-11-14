@@ -1119,7 +1119,7 @@ ra_move_list(const char *key, size_t key_len, zval *z_from, zval *z_to, zend_lon
 }
 
 void
-ra_move_key(const char *key, int key_len, zval *z_from, zval *z_to TSRMLS_DC) {
+ra_move_key(const char *key, size_t key_len, zval *z_from, zval *z_to TSRMLS_DC) {
     long res[2], type, ttl;
     zend_bool success = 0;
 
