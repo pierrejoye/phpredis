@@ -27,7 +27,6 @@
 #endif
 
 #ifdef PHP_SESSION
-#include "common.h"
 #include "ext/standard/info.h"
 #include "php_redis.h"
 #include "redis_session.h"
@@ -116,7 +115,7 @@ void
 redis_pool_member_auth(redis_pool_member *rpm TSRMLS_DC) {
     RedisSock *redis_sock = rpm->redis_sock;
     char *response, *cmd;
-    int response_len, cmd_len;
+    size_t response_len, cmd_len;
 
     if(!rpm->auth || !rpm->auth_len) { /* no password given. */
             return;
@@ -136,7 +135,7 @@ static void
 redis_pool_member_select(redis_pool_member *rpm TSRMLS_DC) {
     RedisSock *redis_sock = rpm->redis_sock;
     char *response, *cmd;
-    int response_len, cmd_len;
+    size_t response_len, cmd_len;
 
     cmd_len = redis_cmd_format_static(&cmd, "SELECT", "d", rpm->database);
 
@@ -237,8 +236,7 @@ PS_OPEN_FUNC(redis)
                 sapi_module.treat_data(PARSE_STRING, estrdup(url->query), &params TSRMLS_CC);
 
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "weight", sizeof("weight") - 1)) != NULL) {
-                    convert_to_long_ex(param);
-                    weight = Z_LVAL_P(param);
+                    weight = zval_get_long(param);
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "timeout", sizeof("timeout") - 1)) != NULL) {
                     timeout = atof(Z_STRVAL_P(param));
@@ -256,12 +254,10 @@ PS_OPEN_FUNC(redis)
                     auth = estrndup(Z_STRVAL_P(param), Z_STRLEN_P(param));
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "database", sizeof("database") -1 )) != NULL) {
-                    convert_to_long_ex(param);
-                    database = Z_LVAL_P(param);
+                    database = zval_get_long(param);
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "retry_interval", sizeof("retry_interval") - 1)) != NULL) {
-                    convert_to_long_ex(param);
-                    retry_interval = Z_LVAL_P(param);
+                    retry_interval = zval_get_long(param);
                 }
 
                 zval_ptr_dtor(&params);
@@ -269,6 +265,9 @@ PS_OPEN_FUNC(redis)
 
             if ((url->path == NULL && url->host == NULL) || weight <= 0 || timeout <= 0) {
                 php_url_free(url);
+                if (persistent_id) efree(persistent_id);
+                if (prefix) efree(prefix);
+                if (auth) efree(auth);
                 redis_pool_free(pool TSRMLS_CC);
                 PS_SET_MOD_DATA(NULL);
                 return FAILURE;
@@ -310,7 +309,7 @@ PS_CLOSE_FUNC(redis)
 /* }}} */
 
 static char *
-redis_session_key(redis_pool_member *rpm, const char *key, int key_len, int *session_len) {
+redis_session_key(redis_pool_member *rpm, const char *key, int key_len, size_t *session_len) {
 
     char *session;
     char default_prefix[] = "PHPREDIS_SESSION:";
@@ -336,9 +335,9 @@ redis_session_key(redis_pool_member *rpm, const char *key, int key_len, int *ses
 PS_READ_FUNC(redis)
 {
     char *session, *cmd;
-    int session_len, cmd_len;
+    size_t session_len, cmd_len;
     char *char_val;
-    int int_val = 0;
+    size_t int_val = 0;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val);
@@ -378,7 +377,7 @@ PS_READ_FUNC(redis)
 PS_WRITE_FUNC(redis)
 {
     char *cmd, *response, *session;
-    int cmd_len, response_len, session_len;
+    size_t cmd_len, response_len, session_len;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val TSRMLS_CC);
@@ -420,7 +419,7 @@ PS_WRITE_FUNC(redis)
 PS_DESTROY_FUNC(redis)
 {
     char *cmd, *response, *session;
-    int cmd_len, response_len, session_len;
+    size_t cmd_len, response_len, session_len;
 
     redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key->val TSRMLS_CC);
