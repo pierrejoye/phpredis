@@ -27,7 +27,6 @@
 #endif
 
 #ifdef PHP_SESSION
-#include "common.h"
 #include "ext/standard/info.h"
 #include "php_redis.h"
 #include "redis_session.h"
@@ -237,8 +236,7 @@ PS_OPEN_FUNC(redis)
                 sapi_module.treat_data(PARSE_STRING, estrdup(url->query), &params TSRMLS_CC);
 
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "weight", sizeof("weight") - 1)) != NULL) {
-                    convert_to_long_ex(param);
-                    weight = Z_LVAL_P(param);
+                    weight = zval_get_long(param);
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "timeout", sizeof("timeout") - 1)) != NULL) {
                     timeout = atof(Z_STRVAL_P(param));
@@ -256,12 +254,10 @@ PS_OPEN_FUNC(redis)
                     auth = estrndup(Z_STRVAL_P(param), Z_STRLEN_P(param));
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "database", sizeof("database") -1 )) != NULL) {
-                    convert_to_long_ex(param);
-                    database = Z_LVAL_P(param);
+                    database = zval_get_long(param);
                 }
                 if ((param = zend_hash_str_find(Z_ARRVAL(params), "retry_interval", sizeof("retry_interval") - 1)) != NULL) {
-                    convert_to_long_ex(param);
-                    retry_interval = Z_LVAL_P(param);
+                    retry_interval = zval_get_long(param);
                 }
 
                 zval_ptr_dtor(&params);
@@ -269,6 +265,9 @@ PS_OPEN_FUNC(redis)
 
             if ((url->path == NULL && url->host == NULL) || weight <= 0 || timeout <= 0) {
                 php_url_free(url);
+                if (persistent_id) efree(persistent_id);
+                if (prefix) efree(prefix);
+                if (auth) efree(auth);
                 redis_pool_free(pool TSRMLS_CC);
                 PS_SET_MOD_DATA(NULL);
                 return FAILURE;

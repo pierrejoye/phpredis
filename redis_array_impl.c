@@ -50,6 +50,14 @@ ra_load_hosts(RedisArray *ra, HashTable *hosts, zend_long retry_interval, zend_b
     {
         if ((zpData = zend_hash_get_current_data(hosts)) == NULL || (Z_TYPE_P(zpData) != IS_STRING))
         {
+            for (i = 0; i < ra->count; i++) {
+                zval_dtor(&ra->redis[i]);
+                efree(&ra->redis[i]);
+                efree(ra->hosts[i]);
+            }
+            efree(ra->redis);
+            efree(ra->hosts);
+            zval_dtor(&ra->z_pure_cmds);
             zval_dtor(&z_cons);
             efree(ra);
             return NULL;
@@ -62,13 +70,12 @@ ra_load_hosts(RedisArray *ra, HashTable *hosts, zend_long retry_interval, zend_b
         host_len = Z_STRLEN_P(zpData);
         port = 6379;
 
-        /* Split host:port by colon */
-        if ((p = memchr(host, ':', host_len))) {
-            host_len = p - host;
-            port = (short)atoi(p+1);
-        } else if(strchr(host,'/') != NULL) { /* unix socket */
-            port = -1;
-        }
+		if(((p = strrchr(host, ':')))) { /* found port */
+			host_len = p - host;
+			port = (short)atoi(p+1);
+		} else if(strchr(host,'/') != NULL) { /* unix socket */
+		    port = -1;
+		}
 
         /* create Redis object */
         object_init_ex(&ra->redis[i], redis_ce);
@@ -85,7 +92,8 @@ ra_load_hosts(RedisArray *ra, HashTable *hosts, zend_long retry_interval, zend_b
         /* attach */
         id = zend_list_insert(redis_sock, le_redis_sock TSRMLS_CC);
         add_property_resource(&ra->redis[i], "socket", Z_RES_P(id));
-        i++;
+
+        ra->count = ++i;
     }
 
     /* Cleanup constructor zval */
@@ -176,6 +184,12 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
     zend_bool b_lazy_connect = 0;
     double d_connect_timeout = 0;
     HashTable *hHosts = NULL, *hPrev = NULL;
+    size_t name_len = strlen(name) + 1;
+    char *iptr;
+
+    /* Initialize callbacks to undefined */
+    ZVAL_UNDEF(&z_fun);
+    ZVAL_UNDEF(&z_dist);
 
     /* find entry */
     if(!ra_find_name(name))
@@ -183,36 +197,46 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find hosts */
     array_init(&z_params_hosts);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.hosts")), &z_params_hosts TSRMLS_CC);
-    if ((z_hosts = zend_hash_str_find(Z_ARRVAL(z_params_hosts), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.hosts")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_hosts TSRMLS_CC);
+    }
+    if ((z_hosts = zend_hash_str_find(Z_ARRVAL(z_params_hosts), name, name_len)) != NULL) {
         hHosts = Z_ARRVAL_P(z_hosts);
     }
 
     /* find previous hosts */
     array_init(&z_params_prev);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.previous")), &z_params_prev TSRMLS_CC);
-    if ((z_prev = zend_hash_str_find(Z_ARRVAL(z_params_prev), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.previous")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_prev TSRMLS_CC);
+    }
+    if ((z_prev = zend_hash_str_find(Z_ARRVAL(z_params_prev), name, name_len)) != NULL) {
         hPrev = Z_ARRVAL_P(z_prev);
     }
 
     /* find function */
     array_init(&z_params_funs);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.functions")), &z_params_funs TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_funs), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.functions")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_funs TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_funs), name, name_len)) != NULL) {
         ZVAL_DUP(&z_fun, z_data_p);
     }
 
     /* find distributor */
     array_init(&z_params_funs);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.distributor")), &z_params_funs TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_funs), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.distributor")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_funs TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_funs), name, name_len)) != NULL) {
         ZVAL_DUP(&z_dist, z_data_p);
     }
 
     /* find index option */
     array_init(&z_params_index);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.index")), &z_params_index TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_index), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.index")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_index TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_index), name, name_len)) != NULL) {
         if(Z_TYPE_P(z_data_p) == IS_STRING && strncmp(Z_STRVAL_P(z_data_p), "1", 1) == 0) {
             b_index = 1;
         }
@@ -220,8 +244,10 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find autorehash option */
     array_init(&z_params_autorehash);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.autorehash")), &z_params_autorehash TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_autorehash), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.autorehash")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_autorehash TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_autorehash), name, name_len)) != NULL) {
         if(Z_TYPE_P(z_data_p) == IS_STRING && strncmp(Z_STRVAL_P(z_data_p), "1", 1) == 0) {
             b_autorehash = 1;
         }
@@ -229,8 +255,10 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find retry interval option */
     array_init(&z_params_retry_interval);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.retryinterval")), &z_params_retry_interval TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_retry_interval), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.retryinterval")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_retry_interval TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_retry_interval), name, name_len)) != NULL) {
         if (Z_TYPE_P(z_data_p) == IS_LONG || Z_TYPE_P(z_data_p) == IS_STRING) {
             if (Z_TYPE_P(z_data_p) == IS_LONG) {
                 l_retry_interval = Z_LVAL_P(z_data_p);
@@ -243,8 +271,10 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find pconnect option */
     array_init(&z_params_pconnect);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.pconnect")), &z_params_pconnect TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_pconnect), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.pconnect")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_pconnect TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_pconnect), name, name_len)) != NULL) {
         if(Z_TYPE_P(z_data_p) == IS_STRING && strncmp(Z_STRVAL_P(z_data_p), "1", 1) == 0) {
             b_pconnect = 1;
         }
@@ -252,8 +282,10 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find lazy connect option */
     array_init(&z_params_lazy_connect);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.lazyconnect")), &z_params_lazy_connect TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_lazy_connect), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.lazyconnect")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_lazy_connect TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_lazy_connect), name, name_len)) != NULL) {
         if(Z_TYPE_P(z_data_p) == IS_STRING && strncmp(Z_STRVAL_P(z_data_p), "1", 1) == 0) {
             b_lazy_connect = 1;
         }
@@ -261,8 +293,10 @@ RedisArray *ra_load_array(const char *name TSRMLS_DC) {
 
     /* find connect timeout option */
     array_init(&z_params_connect_timeout);
-    sapi_module.treat_data(PARSE_STRING, estrdup(INI_STR("redis.arrays.connecttimeout")), &z_params_connect_timeout TSRMLS_CC);
-    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_connect_timeout), name, strlen(name))) != NULL) {
+    if ((iptr = INI_STR("redis.arrays.connecttimeout")) != NULL) {
+        sapi_module.treat_data(PARSE_STRING, estrdup(iptr), &z_params_connect_timeout TSRMLS_CC);
+    }
+    if ((z_data_p = zend_hash_str_find(Z_ARRVAL(z_params_connect_timeout), name, name_len)) != NULL) {
         if (Z_TYPE_P(z_data_p) == IS_DOUBLE ||
             Z_TYPE_P(z_data_p) == IS_STRING ||
             Z_TYPE_P(z_data_p) == IS_LONG)
@@ -307,7 +341,7 @@ ra_make_array(HashTable *hosts, zval *z_fun, zval *z_dist, HashTable *hosts_prev
     RedisArray *ra = emalloc(sizeof(RedisArray));
     ra->hosts = emalloc(count * sizeof(char*));
     ra->redis = ecalloc(count, sizeof(zval));
-    ra->count = count;
+    ra->count = 0;
     ra->index = b_index;
     ra->auto_rehash = 0;
     ra->pconnect = b_pconnect;
@@ -365,9 +399,7 @@ ra_call_extractor(RedisArray *ra, const char *key, size_t key_len, size_t *out_l
     }
 
     *out_len = Z_STRLEN(z_ret);
-    out = emalloc(*out_len + 1);
-    out[*out_len] = 0;
-    memcpy(out, Z_STRVAL(z_ret), *out_len);
+    out = estrndup(Z_STRVAL(z_ret), *out_len);
 
     zval_dtor(&z_argv0);
     zval_dtor(&z_ret);
@@ -377,27 +409,18 @@ ra_call_extractor(RedisArray *ra, const char *key, size_t key_len, size_t *out_l
 static char *
 ra_extract_key(RedisArray *ra, const char *key, size_t key_len, size_t *out_len TSRMLS_DC) {
 
-    char *start, *end, *out;
+    char *start, *end;
     *out_len = key_len;
 
-    if(Z_TYPE(ra->z_fun) != IS_UNDEF)
+    if (Z_TYPE(ra->z_fun) != IS_UNDEF) {
         return ra_call_extractor(ra, key, key_len, out_len TSRMLS_CC);
-
-    /* look for '{' */
-    start = strchr(key, '{');
-    if(!start) return estrndup(key, key_len);
-
-    /* look for '}' */
-    end = strchr(start + 1, '}');
-    if(!end) return estrndup(key, key_len);
+    } else if ((start = strchr(key, '{')) == NULL || (end = strchr(start + 1, '}')) == NULL) {
+        return estrndup(key, key_len);
+    }
 
     /* found substring */
     *out_len = end - start - 1;
-    out = emalloc(*out_len + 1);
-    out[*out_len] = 0;
-    memcpy(out, start+1, *out_len);
-
-    return out;
+    return estrndup(start + 1, *out_len);
 }
 
 /* call userland key distributor function */
@@ -677,7 +700,6 @@ ra_rehash_scan(zval *z_redis, char ***keys, size_t **key_lens, const char *cmd, 
     long count, i;
     zval z_fun_smembers, z_ret, z_arg, *z_data_p;
     HashTable *h_keys;
-    HashPosition pointer;
     char *key;
     size_t key_len;
 
@@ -697,19 +719,16 @@ ra_rehash_scan(zval *z_redis, char ***keys, size_t **key_lens, const char *cmd, 
     *keys = emalloc(count * sizeof(char*));
     *key_lens = emalloc(count * sizeof(size_t));
 
-    for (i = 0, zend_hash_internal_pointer_reset_ex(h_keys, &pointer);
-            (z_data_p = zend_hash_get_current_data_ex(h_keys, &pointer)) != NULL;
-            zend_hash_move_forward_ex(h_keys, &pointer), ++i) {
-
+    i = 0;
+    ZEND_HASH_FOREACH_VAL(h_keys, z_data_p) {
         key = Z_STRVAL_P(z_data_p);
         key_len = Z_STRLEN_P(z_data_p);
 
         /* copy key and length */
-        (*keys)[i] = emalloc(1 + key_len);
-        memcpy((*keys)[i], key, key_len);
+        (*keys)[i] = estrndup(key, key_len);
         (*key_lens)[i] = key_len;
-        (*keys)[i][key_len] = 0; /* null-terminate string */
-    }
+        i++;
+    } ZEND_HASH_FOREACH_END();
 
     /* cleanup */
     zval_dtor(&z_fun_smembers);
@@ -717,17 +736,6 @@ ra_rehash_scan(zval *z_redis, char ***keys, size_t **key_lens, const char *cmd, 
     zval_dtor(&z_ret);
 
     return count;
-}
-
-static long
-ra_rehash_scan_index(zval *z_redis, char ***keys, size_t **key_lens TSRMLS_DC) {
-    return ra_rehash_scan(z_redis, keys, key_lens, "SMEMBERS", PHPREDIS_INDEX_NAME TSRMLS_CC);
-}
-
-/* list keys using KEYS command */
-static long
-ra_rehash_scan_keys(zval *z_redis, char ***keys, size_t **key_lens TSRMLS_DC) {
-    return ra_rehash_scan(z_redis, keys, key_lens, "KEYS", "*" TSRMLS_CC);
 }
 
 /* run TYPE to find the type */
@@ -1111,8 +1119,8 @@ ra_move_list(const char *key, size_t key_len, zval *z_from, zval *z_to, zend_lon
 }
 
 void
-ra_move_key(const char *key, size_t key_len, zval *z_from, zval *z_to TSRMLS_DC) {
-    zend_long res[2], type, ttl;
+ra_move_key(const char *key, int key_len, zval *z_from, zval *z_to TSRMLS_DC) {
+    long res[2], type, ttl;
     zend_bool success = 0;
 
     if (ra_get_key_type(z_from, key, key_len, z_from, res TSRMLS_CC)) {
@@ -1188,9 +1196,9 @@ ra_rehash_server(RedisArray *ra, zval *z_redis, const char *hostname, zend_bool 
 
     /* list all keys */
     if(b_index) {
-        count = ra_rehash_scan_index(z_redis, &keys, &key_lens TSRMLS_CC);
+        count = ra_rehash_scan(z_redis, &keys, &key_lens, "SMEMBERS", PHPREDIS_INDEX_NAME TSRMLS_CC);
     } else {
-        count = ra_rehash_scan_keys(z_redis, &keys, &key_lens TSRMLS_CC);
+        count = ra_rehash_scan(z_redis, &keys, &key_lens, "KEYS", "*" TSRMLS_CC);
     }
 
     /* callback */
@@ -1207,12 +1215,10 @@ ra_rehash_server(RedisArray *ra, zval *z_redis, const char *hostname, zend_bool 
         if(strcmp(hostname, ra->hosts[target_pos])) { /* different host */
             ra_move_key(keys[i], key_lens[i], z_redis, z_target TSRMLS_CC);
         }
-    }
-
-    /* cleanup */
-    for(i = 0; i < count; ++i) {
+        /* cleanup */
         efree(keys[i]);
     }
+
     efree(keys);
     efree(key_lens);
 }
@@ -1230,4 +1236,4 @@ ra_rehash(RedisArray *ra, zend_fcall_info *z_cb, zend_fcall_info_cache *z_cb_cac
     }
 }
 
-/* vim: set tabstop=4 softtabstop=4 noexpandtab shiftwidth=4: */
+/* vim: set tabstop=4 softtabstop=4 expandtab shiftwidth=4: */

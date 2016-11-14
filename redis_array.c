@@ -340,7 +340,6 @@ ra_forward_call(INTERNAL_FUNCTION_PARAMETERS, RedisArray *ra, const char *cmd, s
     int i;
     zval *redis_inst;
     zval z_fun, *z_callargs;
-    HashPosition pointer;
     HashTable *h_args;
 
     int argc;
@@ -378,12 +377,11 @@ ra_forward_call(INTERNAL_FUNCTION_PARAMETERS, RedisArray *ra, const char *cmd, s
     z_callargs = emalloc(argc * sizeof(zval));
 
     /* copy args to array */
-    for (i = 0, zend_hash_internal_pointer_reset_ex(h_args, &pointer);
-            (zp_tmp = zend_hash_get_current_data_ex(h_args, &pointer)) != NULL;
-            ++i, zend_hash_move_forward_ex(h_args, &pointer))
-    {
+	i = 0;
+	ZEND_HASH_FOREACH_VAL(h_args, zp_tmp) {
         ZVAL_DUP(&z_callargs[i], zp_tmp);
-    }
+		i++;
+    } ZEND_HASH_FOREACH_END();
 
     /* multi/exec */
     if(ra->z_multi_exec) {
@@ -831,8 +829,7 @@ PHP_METHOD(RedisArray, mget)
     RedisArray *ra;
     int *pos, argc, *argc_each;
     HashTable *h_keys;
-    HashPosition pointer;
-    zval **redis_instances, **argv;
+    zval **argv;
 
     /* Multi/exec support */
     HANDLE_MULTI_EXEC("MGET");
@@ -854,17 +851,14 @@ PHP_METHOD(RedisArray, mget)
     argc = zend_hash_num_elements(h_keys);
     pos = emalloc(argc * sizeof(int));
 
-    redis_instances = ecalloc(argc, sizeof(zval*));
     argv = emalloc(argc * sizeof(zval*));
 
     argc_each = emalloc(ra->count * sizeof(int));
     memset(argc_each, 0, ra->count * sizeof(int));
 
     /* associate each key to a redis node */
-    for (i = 0, zend_hash_internal_pointer_reset_ex(h_keys, &pointer);
-            (data = zend_hash_get_current_data_ex(h_keys, &pointer)) != NULL;
-            zend_hash_move_forward_ex(h_keys, &pointer), ++i)
-    {
+	i = 0;
+	ZEND_HASH_FOREACH_VAL(h_keys, data) {
         /* If we need to represent a long key as a string */
         size_t key_len;
         char kbuf[40], *key_lookup;
@@ -874,7 +868,6 @@ PHP_METHOD(RedisArray, mget)
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "MGET: all keys must be strings or longs");
             efree(argv);
             efree(pos);
-            efree(redis_instances);
             efree(argc_each);
             RETURN_FALSE;
         }
@@ -889,11 +882,14 @@ PHP_METHOD(RedisArray, mget)
         }
 
         /* Find our node */
-        redis_instances[i] = ra_find_node(ra, key_lookup, key_len, &pos[i] TSRMLS_CC);
+        if (ra_find_node(ra, key_lookup, key_len, &pos[i] TSRMLS_CC) == NULL) {
+            /* TODO: handle */
+        }
 
         argc_each[pos[i]]++;    /* count number of keys per node */
         argv[i] = data;
-    }
+		i++;
+    } ZEND_HASH_FOREACH_END();
 
     /* prepare return value */
     array_init(return_value);
@@ -929,7 +925,6 @@ PHP_METHOD(RedisArray, mget)
                 zval_dtor(&z_fun);
                 zval_ptr_dtor(&z_tmp_array);
                 efree(pos);
-                efree(redis_instances);
                 efree(argc_each);
 
                 /* failure */
@@ -962,7 +957,6 @@ PHP_METHOD(RedisArray, mget)
     zval_dtor(&z_fun);
     efree(argv);
     efree(pos);
-    efree(redis_instances);
     efree(argc_each);
 }
 
@@ -974,7 +968,7 @@ PHP_METHOD(RedisArray, mset)
     RedisArray *ra;
     int *pos, argc, *argc_each;
     HashTable *h_keys;
-    zval *redis_inst, **redis_instances, **argv;
+    zval *redis_inst, **argv;
     char *key, **keys, **key_free, kbuf[40];
     zend_string *key_zstr;
     size_t key_len;
@@ -1002,7 +996,6 @@ PHP_METHOD(RedisArray, mset)
     key_lens = emalloc(argc * sizeof(int));
 
     argv = emalloc(argc * sizeof(zval*));
-    redis_instances = ecalloc(argc, sizeof(zval*));
 
     /* Allocate an array holding the indexes of any keys that need freeing */
     key_free = emalloc(argc * sizeof(char*));
@@ -1033,7 +1026,9 @@ PHP_METHOD(RedisArray, mset)
             key = key_zstr->val;
         }
 
-        redis_instances[i] = ra_find_node(ra, key, (int)key_len, &pos[i] TSRMLS_CC);
+        if (ra_find_node(ra, key, (int)key_len, &pos[i] TSRMLS_CC) == NULL) {
+            /* TODO: handle */
+        }
         argc_each[pos[i]]++;    /* count number of keys per node */
         argv[i] = data;
         keys[i] = key;
@@ -1099,7 +1094,6 @@ PHP_METHOD(RedisArray, mset)
     efree(key_lens);
     efree(argv);
     efree(pos);
-    efree(redis_instances);
     efree(argc_each);
 
     RETURN_TRUE;
@@ -1113,8 +1107,7 @@ PHP_METHOD(RedisArray, del)
     RedisArray *ra;
     int *pos, argc, *argc_each;
     HashTable *h_keys;
-    HashPosition pointer;
-    zval *redis_inst, **redis_instances, **argv;;
+    zval *redis_inst, **argv;;
     size_t total = 0;
     int free_zkeys = 0;
 
@@ -1157,26 +1150,26 @@ PHP_METHOD(RedisArray, del)
     pos = emalloc(argc * sizeof(int));
 
     argv = emalloc(argc * sizeof(zval*));
-    redis_instances = ecalloc(argc, sizeof(zval*));
 
     argc_each = emalloc(ra->count * sizeof(int));
     memset(argc_each, 0, ra->count * sizeof(int));
 
     /* associate each key to a redis node */
-    for (i = 0, zend_hash_internal_pointer_reset_ex(h_keys, &pointer);
-            (data = zend_hash_get_current_data_ex(h_keys, &pointer)) != NULL;
-            zend_hash_move_forward_ex(h_keys, &pointer), ++i) {
-
+	i = 0;
+	ZEND_HASH_FOREACH_VAL(h_keys, data) {
         if (Z_TYPE_P(data) != IS_STRING) {
             php_error_docref(NULL TSRMLS_CC, E_ERROR, "DEL: all keys must be string.");
             efree(pos);
             RETURN_FALSE;
         }
 
-        redis_instances[i] = ra_find_node(ra, Z_STRVAL_P(data), Z_STRLEN_P(data), &pos[i] TSRMLS_CC);
+        if (ra_find_node(ra, Z_STRVAL_P(data), Z_STRLEN_P(data), &pos[i] TSRMLS_CC) == NULL) {
+            /* TODO: handle */
+        }
         argc_each[pos[i]]++;    /* count number of keys per node */
         argv[i] = data;
-    }
+		i++;
+    } ZEND_HASH_FOREACH_END();
 
     /* calls */
     for(n = 0; n < ra->count; ++n) { /* for each node */
@@ -1224,7 +1217,6 @@ PHP_METHOD(RedisArray, del)
     /* cleanup */
     efree(argv);
     efree(pos);
-    efree(redis_instances);
     efree(argc_each);
 
     if(free_zkeys) {
@@ -1333,4 +1325,4 @@ PHP_METHOD(RedisArray, unwatch)
     ra_index_unwatch(ra->z_multi_exec, return_value TSRMLS_CC);
 }
 
-/* vim: set tabstop=4 softtabstop=4 noexpandtab shiftwidth=4: */
+/* vim: set tabstop=4 softtabstop=4 expandtab shiftwidth=4: */
